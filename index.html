@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CJ Logistics Visitor Security Pass</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <section class="login-screen active" id="loginScreen">
+    <form class="login-card auth-panel active" id="loginForm" data-auth-panel="login">
+      <img class="login-logo" src="assets-cj-logo.svg" alt="CJ Logistics logo">
+      <div>
+        <h1>CJ Logistics</h1>
+        <p>Visitor Security System</p>
+      </div>
+      <label>ชื่อผู้ใช้<input id="loginUsername" autocomplete="username" required></label>
+      <label>รหัสผ่าน/PIN<input id="loginPasscode" type="password" autocomplete="current-password" required></label>
+      <div class="login-error" id="loginError"></div>
+      <button class="primary" type="submit">เข้าสู่ระบบ</button>
+      <button class="text-btn auth-link" id="showSignup" type="button">สมัครผู้ใช้งานใหม่</button>
+    </form>
+    <form class="login-card auth-panel" id="signupForm" data-auth-panel="signup">
+      <img class="login-logo" src="assets-cj-logo.svg" alt="CJ Logistics logo">
+      <div>
+        <h2>สมัครผู้ใช้งาน</h2>
+        <p>สำหรับเจ้าหน้าที่ใหม่ รอ Admin กำหนดสิทธิ์ก่อนเข้าใช้งาน</p>
+      </div>
+      <label>ชื่อ-นามสกุล<input id="signupDisplayName" autocomplete="name" required></label>
+      <label>ชื่อผู้ใช้<input id="signupUsername" autocomplete="username" required></label>
+      <label>รหัสผ่าน/PIN<input id="signupPasscode" type="password" autocomplete="new-password" required></label>
+      <div class="login-error" id="signupMessage"></div>
+      <button class="ghost" type="submit">ส่งคำขอสมัคร</button>
+      <button class="text-btn auth-link" id="showLogin" type="button">กลับไปเข้าสู่ระบบ</button>
+    </form>
+  </section>
+
+  <aside class="sidebar">
+    <div class="brand">
+      <img class="logo-img" src="assets-cj-logo.svg" alt="CJ Logistics logo">
+      <div>
+        <strong>CJ Logistics</strong>
+        <small>Visitor Control</small>
+      </div>
+    </div>
+    <nav class="nav" aria-label="Main">
+      <button class="nav-item active" data-view="dashboard">Dashboard</button>
+      <button class="nav-item" data-view="register">ลงทะเบียน</button>
+      <button class="nav-item" data-view="checkpoint">สแกนเข้าออก</button>
+      <button class="nav-item" data-view="inside">อยู่ในพื้นที่</button>
+      <button class="nav-item" data-view="blacklist">Blacklist</button>
+      <button class="nav-item" data-view="reports">รายงาน</button>
+      <button class="nav-item" data-view="users">จัดการผู้ใช้</button>
+      <button class="nav-item" data-view="settings">ตั้งค่า</button>
+    </nav>
+    <div class="operator">
+      <span class="status-dot"></span>
+      <div>
+        <strong id="operatorName">Admin</strong>
+        <small><span id="operatorRole">Admin</span> · <span id="clock">--:--</span></small>
+      </div>
+      <button class="logout-btn" id="logoutBtn" type="button">ออก</button>
+    </div>
+  </aside>
+
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1 id="viewTitle">Dashboard</h1>
+        <p id="viewSubtitle">ภาพรวมผู้มาติดต่อและสถานะการเข้าออกพื้นที่</p>
+      </div>
+    </header>
+
+    <section class="view active" id="dashboard">
+      <div class="metrics">
+        <article><small>ผู้มาติดต่อวันนี้</small><strong id="mToday">0</strong></article>
+        <article><small>อยู่ในพื้นที่</small><strong id="mInside">0</strong></article>
+        <article><small>เกินเวลา</small><strong id="mOverdue">0</strong></article>
+        <article><small>ปฏิเสธเข้าโซน</small><strong id="mDenied">0</strong></article>
+      </div>
+      <div class="grid two">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>รายการล่าสุด</h2>
+            <button class="text-btn" id="toggleDashboardRows" type="button">ดูทั้งหมด</button>
+          </div>
+          <div class="dashboard-filters">
+            <input id="dashboardFilterText" placeholder="ค้นหาเลขใบผ่าน ชื่อ บริษัท ทะเบียน">
+            <select id="dashboardFilterStatus">
+              <option value="">ทุกสถานะ</option>
+              <option value="registered">ลงทะเบียนเข้าพื้นที่</option>
+              <option value="check_in">เช็คอินเข้าพื้นที่</option>
+              <option value="checked_out">เช็คเอาท์ออกจากพื้นที่</option>
+            </select>
+            <select id="dashboardFilterZone">
+              <option value="">ทุกโซน</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>เลขใบผ่าน</th><th>ชื่อ</th><th>โซนล่าสุด</th><th>สถานะ</th><th></th></tr></thead>
+              <tbody id="latestRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" id="register">
+      <div class="registration-flow">
+        <div class="flow-steps">
+          <span class="active" data-step-dot="form">1 ข้อมูล</span>
+          <span data-step-dot="photo">2 ถ่ายรูป</span>
+          <span data-step-dot="pass">3 ใบผ่าน</span>
+          <span data-step-dot="done">4 เสร็จสิ้น</span>
+        </div>
+
+        <form class="panel form-panel register-card register-step active" id="visitorForm" data-register-step="form">
+          <div class="panel-head register-head">
+            <div>
+              <h2>ออกใบผ่านผู้มาติดต่อ</h2>
+              <p>กรอกข้อมูลหลัก เลือกพื้นที่ และสร้าง QR สำหรับตรวจสอบ</p>
+            </div>
+            <span class="pill">Manual</span>
+          </div>
+
+          <div class="form-section">
+            <div class="section-title"><span>1</span><strong>ข้อมูลบุคคล</strong></div>
+            <div class="form-grid">
+              <label>ประเภทเอกสาร
+                <select name="documentType" id="documentType">
+                  <option value="thai_id">บัตรประชาชน</option>
+                  <option value="passport">Passport / ต่างด้าว</option>
+                </select>
+              </label>
+              <label><span id="documentNoLabel">เลขบัตรประชาชน</span><input name="nationalId" inputmode="numeric" autocomplete="off" required></label>
+              <label>ชื่อ-นามสกุล<input name="fullName" autocomplete="name" required></label>
+              <label>บริษัท/หน่วยงาน<input name="company"></label>
+              <label>เบอร์โทร<input name="phone" inputmode="tel"></label>
+              <label>ทะเบียนรถ<input name="vehicle"></label>
+              <label class="wide">ที่อยู่<textarea name="address" rows="2"></textarea></label>
+              <label>ประเภทผู้มาติดต่อ
+                <select name="visitorType">
+                  <option>โหลดเดอร์</option>
+                  <option>ส่งสินค้า</option>
+                  <option>รับสินค้า</option>
+                  <option>ผู้รับเหมา</option>
+                  <option>รับภาชนะ</option>
+                  <option>ส่งภาชนะ</option>
+                  <option>รับเอกสาร</option>
+                  <option>พนักงานโรงอาหาร</option>
+                  <option>อื่นๆ โปรดระบุ</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="section-title"><span>2</span><strong>เข้าพื้นที่</strong></div>
+            <div class="form-grid">
+              <label>เข้าพื้นที่
+                <select name="targetZone" id="targetZone"></select>
+              </label>
+              <label class="wide">หมายเหตุ<textarea name="note" rows="3"></textarea></label>
+            </div>
+          </div>
+
+          <div class="consent">
+            <label><input type="checkbox" name="consent" required> ได้รับความยินยอมในการจัดเก็บข้อมูลและภาพใบหน้าเพื่อควบคุมความปลอดภัย</label>
+          </div>
+          <div class="form-actions sticky-actions">
+            <button type="reset" class="ghost">ล้างข้อมูล</button>
+            <button type="submit" class="primary">ถัดไป: ถ่ายรูป</button>
+          </div>
+        </form>
+
+        <section class="panel camera-panel register-step" data-register-step="photo">
+            <div class="panel-head">
+              <div>
+                <h2>ถ่ายรูปผู้มาติดต่อ</h2>
+                <p>ตรวจสอบว่าภาพใบหน้าชัดเจนก่อนออกใบผ่าน</p>
+              </div>
+              <span class="pill danger" id="photoState">ยังไม่มีรูป</span>
+            </div>
+            <div class="camera-box">
+              <video id="camera" autoplay playsinline muted></video>
+              <img id="photoPreview" alt="visitor face preview">
+            </div>
+            <div class="camera-actions">
+              <button class="ghost" id="backToForm" type="button">ย้อนกลับ</button>
+              <button class="ghost" id="startCamera" type="button">เปิดกล้อง</button>
+              <button class="primary" id="capturePhoto" type="button">ถ่ายรูป</button>
+              <label class="file-btn">อัปโหลดรูป<input id="uploadPhoto" type="file" accept="image/*"></label>
+            </div>
+            <canvas id="photoCanvas" hidden></canvas>
+          </section>
+
+          <section class="pass-preview register-step" id="passPreview" data-register-step="pass">
+            <div class="pass-paper">
+              <div class="pass-head editable-brand">
+                <img class="pass-logo" src="assets-cj-logo.svg" alt="CJ Logistics logo">
+                <strong id="passBrandText">CJ LOGISTICS</strong>
+              </div>
+              <div class="pass-no">เลขที่ <b id="pvPassNo">GP-2026-05-0001</b></div>
+              <div class="pass-body">
+                <div class="face-slot"><img id="pvPhoto" alt=""></div>
+                <dl>
+                  <dt>เข้าพื้นที่</dt><dd id="pvZone">-</dd>
+                  <dt>ชื่อ</dt><dd id="pvName">-</dd>
+                  <dt>วันที่</dt><dd id="pvDate">-</dd>
+                  <dt>เวลา</dt><dd id="pvTime">-</dd>
+                  <dt>ทะเบียนรถ</dt><dd id="pvVehicle">-</dd>
+                  <dt>ประเภท</dt><dd id="pvType">-</dd>
+                </dl>
+              </div>
+              <div class="qr" id="qrBox"></div>
+              <div class="pass-sign">
+                <span>ผู้อนุมัติ</span><span>เจ้าหน้าที่ตรวจออก</span>
+              </div>
+            </div>
+            <div class="print-actions">
+              <button class="primary" id="printPass">พิมพ์ใบผ่าน</button>
+            </div>
+          </section>
+
+          <section class="panel done-panel register-step" data-register-step="done">
+            <div class="done-mark">✓</div>
+            <h2>ดำเนินการเสร็จสิ้น</h2>
+            <p>ออกใบผ่านและบันทึกข้อมูลเรียบร้อยแล้ว</p>
+            <button class="primary" id="newRegistration" type="button">ลงทะเบียนคนถัดไป</button>
+          </section>
+      </div>
+    </section>
+
+    <section class="view" id="passDesigner">
+      <div class="grid designer-grid">
+        <section class="panel design-panel">
+          <div class="panel-head">
+            <h2>ปรับแต่งใบผ่าน</h2>
+            <span class="pill">Edit Mode</span>
+          </div>
+          <div class="design-grid">
+            <label class="wide">ชื่อบนใบผ่าน<input id="designBrand" value="CJ LOGISTICS"></label>
+            <label class="wide file-upload">อัปโหลดโลโก้
+              <input id="designLogoUpload" type="file" accept="image/*">
+            </label>
+            <label>สีหัวใบผ่าน<input id="designAccent" type="color" value="#101820"></label>
+            <label>ขนาดโลโก้
+              <input id="designLogoSize" type="range" min="36" max="110" value="58">
+            </label>
+            <label>ตำแหน่งโลโก้ซ้าย-ขวา
+              <input id="designLogoOffset" type="range" min="-120" max="120" value="0">
+            </label>
+            <label>ขนาดข้อความแบรนด์
+              <input id="designBrandSize" type="range" min="14" max="34" value="18">
+            </label>
+            <label>สีข้อความแบรนด์<input id="designBrandColor" type="color" value="#101820"></label>
+            <label>ข้อความซ้าย-ขวา
+              <input id="designBrandOffsetX" type="range" min="-160" max="160" value="0">
+            </label>
+            <label>ข้อความขึ้น-ลง
+              <input id="designBrandOffsetY" type="range" min="-40" max="40" value="0">
+            </label>
+            <label>ขนาด QR
+              <input id="designQrSize" type="range" min="120" max="240" value="160">
+            </label>
+            <label>ขนาดตัวอักษร
+              <input id="designFontSize" type="range" min="14" max="20" value="16">
+            </label>
+            <label>พื้นหลัง
+              <select id="designBackground">
+                <option value="grid">ตารางเหมือนฟอร์ม</option>
+                <option value="plain">พื้นขาว</option>
+                <option value="soft">พื้นเทาอ่อน</option>
+              </select>
+            </label>
+            <label class="toggle"><input id="designShowPhoto" type="checkbox" checked> แสดงรูปใบหน้า</label>
+            <label class="toggle"><input id="designShowSign" type="checkbox" checked> แสดงช่องลายเซ็น</label>
+          </div>
+          <div class="form-actions">
+            <button class="ghost" id="resetLogo" type="button">ใช้โลโก้เดิม</button>
+            <button class="ghost" id="resetDesign" type="button">คืนค่าเริ่มต้น</button>
+            <button class="primary" id="saveDesign" type="button">บันทึกดีไซน์</button>
+          </div>
+        </section>
+
+        <section class="designer-preview">
+          <div class="pass-paper">
+            <div class="pass-head editable-brand">
+              <img class="pass-logo" src="assets-cj-logo.svg" alt="CJ Logistics logo">
+              <strong class="designerBrandText">CJ LOGISTICS</strong>
+            </div>
+            <div class="pass-no">เลขที่ <b>GP-2026-05-0001</b></div>
+            <div class="pass-body">
+              <div class="face-slot"><img alt=""></div>
+              <dl>
+                <dt>เข้าพื้นที่</dt><dd>Warehouse A</dd>
+                <dt>ชื่อ</dt><dd>ตัวอย่าง ผู้มาติดต่อ</dd>
+                <dt>วันที่</dt><dd>27 พ.ค. 2569</dd>
+                <dt>เวลา</dt><dd>14:30</dd>
+                <dt>ทะเบียนรถ</dt><dd>กข 1234</dd>
+                <dt>ประเภท</dt><dd>โหลดเดอร์</dd>
+              </dl>
+            </div>
+            <div class="qr designerQr"></div>
+            <div class="pass-sign">
+              <span>ผู้อนุมัติ</span><span>เจ้าหน้าที่ตรวจออก</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" id="checkpoint">
+      <div class="grid checkpoint-grid">
+        <section class="panel scanner-panel">
+          <div class="panel-head">
+            <h2>จุดตรวจโซน</h2>
+            <select id="scanZone"></select>
+          </div>
+          <div class="scanner-box">
+            <video id="scanVideo" autoplay playsinline muted></video>
+            <div id="scannerFallback">ใส่เลขใบผ่านหรือสแกน QR ผ่านกล้อง</div>
+          </div>
+          <div class="scan-input">
+            <input id="scanCode" placeholder="เช่น GP-2026-05-0001">
+            <button class="ghost" id="startScanner">เปิดกล้องสแกน</button>
+            <button class="primary" id="lookupPass">ตรวจสอบ</button>
+          </div>
+        </section>
+        <section class="verdict" id="verdict">
+          <div class="verdict-status pending">รอตรวจสอบ</div>
+          <div class="verdict-content">
+            <div class="face-slot large"><img id="scanPhoto" alt=""></div>
+            <div>
+              <h2 id="scanName">-</h2>
+              <p id="scanMeta">ใส่เลขใบผ่านเพื่อดูข้อมูลและสิทธิ์การเข้าโซน</p>
+              <div class="chips" id="scanChips"></div>
+            </div>
+          </div>
+          <div class="verdict-actions">
+            <button class="success" id="checkInBtn">เช็คอิน</button>
+            <button class="ghost" id="checkOutBtn">เช็คเอาท์</button>
+            <button class="danger-btn" id="denyBtn">ปฏิเสธ</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" id="inside">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>ผู้ที่อยู่ในพื้นที่</h2>
+          <input class="search" id="insideSearch" placeholder="ค้นหาชื่อ เลขใบผ่าน ทะเบียนรถ">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>เลขใบผ่าน</th><th>ชื่อ</th><th>บริษัท</th><th>โซนล่าสุด</th><th>เข้าเมื่อ</th><th>อายุใบผ่าน</th><th></th></tr></thead>
+            <tbody id="insideRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section class="view" id="blacklist">
+      <div class="grid blacklist-grid">
+        <form class="panel ban-form" id="banForm">
+          <div class="panel-head">
+            <div>
+              <h2>บันทึกแบนผู้มาติดต่อ</h2>
+              <p>กรอกข้อมูลการกระทำความผิดและมาตรการควบคุม</p>
+            </div>
+            <span class="pill danger">Security Action</span>
+          </div>
+          <div class="form-grid">
+            <label>เลขบัตร/เอกสาร<input id="banNationalId" inputmode="numeric" autocomplete="off"></label>
+            <label>ชื่อ-นามสกุล<input id="banFullName" required></label>
+            <label>บริษัท/หน่วยงาน<input id="banCompany"></label>
+            <label>ทะเบียนรถ<input id="banVehicle"></label>
+            <label>ประเภทความผิด
+              <select id="banCategory">
+                <option value="zone_violation">เข้าเขตหวงห้าม/ผิดโซน</option>
+                <option value="behavior">พฤติกรรมไม่เหมาะสม</option>
+                <option value="safety">ฝ่าฝืนกฎความปลอดภัย</option>
+                <option value="asset">เกี่ยวข้องกับทรัพย์สิน/สินค้า</option>
+                <option value="document">ข้อมูลหรือเอกสารไม่ถูกต้อง</option>
+                <option value="other">อื่น ๆ</option>
+              </select>
+            </label>
+            <label>ระดับความรุนแรง
+              <select id="banSeverity">
+                <option value="watch">เฝ้าระวัง</option>
+                <option value="temporary">แบนชั่วคราว</option>
+                <option value="permanent">แบนถาวร</option>
+              </select>
+            </label>
+            <label>วันที่เกิดเหตุ<input id="banIncidentDate" type="datetime-local" required></label>
+            <label>ผู้บันทึก/ผู้อนุมัติ<input id="banOfficer" required></label>
+            <label>มาตรการ
+              <select id="banAction">
+                <option value="deny_entry">ห้ามเข้าพื้นที่</option>
+                <option value="require_approval">เข้าพื้นที่ได้เมื่อมีผู้อนุมัติ</option>
+                <option value="escort_only">ต้องมีเจ้าหน้าที่ประกบ</option>
+                <option value="watch_only">เฝ้าระวังและแจ้งเตือน</option>
+              </select>
+            </label>
+            <label>หมดอายุการแบน<input id="banExpiresAt" type="date"></label>
+            <label class="wide">รายละเอียดการกระทำความผิด<textarea id="banOffense" rows="4" required></textarea></label>
+            <label class="wide">หลักฐาน/อ้างอิง<textarea id="banEvidence" rows="2" placeholder="เลข incident, รูป, กล้องวงจรปิด, เอกสาร"></textarea></label>
+          </div>
+          <div class="form-actions sticky-actions">
+            <button class="ghost" id="clearBanForm" type="button">ล้างข้อมูล</button>
+            <button class="primary" type="submit">บันทึกแบน</button>
+          </div>
+        </form>
+
+        <section class="panel ban-list-panel">
+          <div class="panel-head">
+            <h2>รายการแบน/เฝ้าระวัง</h2>
+            <input class="search" id="banSearch" placeholder="ค้นหาชื่อ เลขเอกสาร บริษัท ทะเบียน">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>ชื่อ</th><th>บริษัท</th><th>ความผิด</th><th>ระดับ</th><th>มาตรการ</th><th></th></tr></thead>
+              <tbody id="banRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" id="reports">
+      <div class="grid two">
+        <section class="panel">
+          <div class="panel-head"><h2>Export รายงาน</h2></div>
+          <div class="report-actions">
+            <button class="primary" data-export="visitors">Export Visitors CSV</button>
+            <button class="primary" data-export="passes">Export Passes CSV</button>
+            <button class="primary" data-export="logs">Export ZoneLogs CSV</button>
+            <button class="primary" data-export="bans">Export Blacklist CSV</button>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>โครงสร้าง Google Sheet</h2></div>
+          <div class="sheet-map">
+            <span>Visitors</span><span>Passes</span><span>ZoneLogs</span><span>Users</span><span>Zones</span>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" id="users">
+      <section class="panel settings-panel user-panel admin-user-panel">
+        <div class="panel-head">
+          <div>
+            <h2>อนุมัติและกำหนดสิทธิ์ผู้ใช้งาน</h2>
+            <p>ตรวจคำขอสมัคร เลือกสิทธิ์ และเปิดใช้งานบัญชีสำหรับเจ้าหน้าที่</p>
+          </div>
+          <div class="panel-actions">
+            <span class="pill" id="userRowsLimit">แสดง 0/0</span>
+            <button class="primary" id="addUserBtn" type="button">เพิ่มผู้ใช้</button>
+          </div>
+        </div>
+        <div class="table-wrap user-table-wrap">
+          <table class="user-table">
+            <thead><tr><th>ผู้ใช้</th><th>สิทธิ์</th><th>บัญชี</th><th>ออนไลน์</th><th></th></tr></thead>
+            <tbody id="userRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section class="view" id="settings">
+      <div class="settings-toolbar">
+        <button class="primary" id="saveSettings" type="button">บันทึกตั้งค่า</button>
+        <button class="ghost" id="resetSettings" type="button">คืนค่าเริ่มต้น</button>
+      </div>
+      <div class="settings-grid">
+        <section class="panel settings-panel">
+          <div class="panel-head">
+            <h2>ใบผ่านและ QR</h2>
+            <span class="pill">Pass Policy</span>
+          </div>
+          <div class="settings-form">
+            <label>รูปแบบเลขใบผ่าน<input id="setPassPrefix" placeholder="GP-{YYYY}-{MM}-"></label>
+            <label>QR ใช้ข้อมูลแบบ
+              <select id="setQrMode">
+                <option value="pass">เลขใบผ่าน</option>
+                <option value="token">Token ปลอดภัย</option>
+                <option value="url">URL Web App</option>
+              </select>
+            </label>
+            <label>ต้องเช็คเอาท์ภายใน
+              <select id="setCheckoutGrace">
+                <option value="0">ทันทีเมื่อหมดอายุ</option>
+                <option value="15">หลังหมดอายุ 15 นาที</option>
+                <option value="30">หลังหมดอายุ 30 นาที</option>
+                <option value="60">หลังหมดอายุ 60 นาที</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel settings-panel">
+          <div class="panel-head">
+            <h2>หน้าตาใบผ่าน</h2>
+            <span class="pill">Pass Design</span>
+          </div>
+          <div class="settings-form single">
+            <p class="setting-note">ตั้งค่าโลโก้ ข้อความ สี ขนาด QR และรูปแบบใบผ่านสำหรับพิมพ์</p>
+            <button class="primary" type="button" data-jump="passDesigner">ปรับแต่งใบผ่าน</button>
+          </div>
+        </section>
+
+        <section class="panel settings-panel">
+          <div class="panel-head">
+            <h2>ความปลอดภัยข้อมูล</h2>
+            <span class="pill">Privacy</span>
+          </div>
+          <div class="settings-list">
+            <label class="toggle"><input id="setMaskNationalId" type="checkbox"> ซ่อนเลขบัตรประชาชนบางส่วน</label>
+            <label class="toggle"><input id="setRequireConsent" type="checkbox"> บังคับติ๊กยินยอมก่อนออกใบผ่าน</label>
+            <label class="toggle"><input id="setBlockExpired" type="checkbox"> บล็อกใบผ่านหมดอายุที่จุดตรวจ</label>
+            <label class="toggle"><input id="setAuditView" type="checkbox"> บันทึก log เมื่อเปิดดูข้อมูลผู้มาติดต่อ</label>
+          </div>
+          <div class="settings-form single">
+            <label>เก็บข้อมูลผู้มาติดต่อ
+              <select id="setRetentionDays">
+                <option value="30">30 วัน</option>
+                <option value="90">90 วัน</option>
+                <option value="180">180 วัน</option>
+                <option value="365">365 วัน</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel settings-panel">
+          <div class="panel-head">
+            <h2>การแจ้งเตือน</h2>
+            <span class="pill">Alerts</span>
+          </div>
+          <div class="settings-list">
+            <label class="toggle"><input id="setAlertOverdue" type="checkbox"> แจ้งเตือนคนอยู่เกินเวลา</label>
+            <label class="toggle"><input id="setAlertDenied" type="checkbox"> แจ้งเตือนเมื่อถูกปฏิเสธเข้าโซน</label>
+            <label class="toggle"><input id="setAlertRestricted" type="checkbox"> แจ้งเตือนเมื่อแตะโซน Restricted</label>
+          </div>
+          <div class="settings-form single">
+            <label>ช่องทางแจ้งเตือน<input id="setAlertChannel" placeholder="Security desk / Line group / Email"></label>
+          </div>
+        </section>
+
+        <section class="panel settings-panel">
+          <div class="panel-head">
+            <h2>Google Sheet / Export</h2>
+            <span class="pill">Integration</span>
+          </div>
+          <div class="settings-form">
+            <label class="wide">Google Sheet URL<input id="setSheetUrl" placeholder="https://docs.google.com/spreadsheets/..."></label>
+            <label class="wide">Apps Script Web App URL<input id="setAppsScriptUrl" placeholder="https://script.google.com/macros/s/..."></label>
+            <label>Export เริ่มต้น
+              <select id="setExportFormat">
+                <option value="csv">CSV</option>
+                <option value="xlsx">Excel</option>
+                <option value="pdf">PDF</option>
+              </select>
+            </label>
+            <label>รอบสรุปรายงาน
+              <select id="setReportCycle">
+                <option value="daily">รายวัน</option>
+                <option value="weekly">รายสัปดาห์</option>
+                <option value="monthly">รายเดือน</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel settings-panel">
+          <div class="panel-head">
+            <h2>โซนพื้นที่</h2>
+            <span class="pill">Zones</span>
+          </div>
+          <form class="zone-editor" id="zoneForm">
+            <input id="zoneEditId" type="hidden">
+            <label>รหัสโซน<input id="zoneId" placeholder="เช่น WH-C" required></label>
+            <label>ชื่อโซน<input id="zoneName" placeholder="เช่น Warehouse C" required></label>
+            <label>ระดับ/ประเภทโซน
+              <input id="zoneLevel" list="zoneLevelOptions" placeholder="เช่น Standard / Controlled / Restricted" required>
+              <datalist id="zoneLevelOptions">
+                <option value="Standard">
+                <option value="Controlled">
+                <option value="Restricted">
+                <option value="Maingate">
+              </datalist>
+            </label>
+            <label class="toggle zone-approval"><input id="zoneApproval" type="checkbox"> ต้องอนุมัติ</label>
+            <div class="zone-actions">
+              <button class="ghost" id="cancelZoneEdit" type="button">ยกเลิก</button>
+              <button class="primary" type="submit">บันทึกโซน</button>
+            </div>
+          </form>
+          <div id="zoneList" class="zone-list detailed"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="user-modal" id="userEditorDialog">
+    <div class="modal-head">
+      <div>
+        <h2 id="userDialogTitle">จัดการผู้ใช้</h2>
+        <p>กำหนดสิทธิ์และสถานะบัญชีเจ้าหน้าที่</p>
+      </div>
+      <button class="ghost" id="closeUserDialog" type="button">ปิด</button>
+    </div>
+    <form class="user-editor" id="userForm">
+      <input id="userEditId" type="hidden">
+      <label>ชื่อผู้ใช้<input id="userName" placeholder="เช่น security01" required></label>
+      <label>ชื่อ-นามสกุล<input id="userDisplayName" placeholder="เช่น สมชาย ใจดี" required></label>
+      <label>รหัสผ่าน/PIN<input id="userPasscode" autocomplete="new-password" placeholder="เว้นว่างไว้ถ้าไม่เปลี่ยนรหัส"></label>
+      <label>สิทธิ์
+        <select id="userRole">
+          <option value="Admin">Admin</option>
+          <option value="Security-Guard">Security-Guard</option>
+          <option value="Security-Maingate">Security-Maingate</option>
+        </select>
+      </label>
+      <label>สถานะ
+        <select id="userStatus">
+          <option value="pending">รออนุมัติ</option>
+          <option value="active">ใช้งาน</option>
+          <option value="inactive">ปิดใช้งาน</option>
+        </select>
+      </label>
+      <div class="user-actions">
+        <button class="ghost" id="cancelUserEdit" type="button">ยกเลิก</button>
+        <button class="primary" type="submit">บันทึกสิทธิ์ผู้ใช้</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="pass-modal" id="passHistoryModal">
+    <div class="modal-head">
+      <h2>ใบผ่านย้อนหลัง</h2>
+      <button class="ghost" id="closePassHistory" type="button">ปิด</button>
+    </div>
+    <div class="modal-body">
+      <div class="pass-paper history-pass-paper">
+        <div class="pass-head editable-brand">
+          <img class="pass-logo" src="assets-cj-logo.svg" alt="CJ Logistics logo">
+          <strong class="historyBrandText">CJ LOGISTICS</strong>
+        </div>
+        <div class="pass-no">เลขที่ <b id="historyPassNo">-</b></div>
+        <div class="pass-body">
+          <div class="face-slot"><img id="historyPhoto" alt=""></div>
+          <dl>
+            <dt>เข้าพื้นที่</dt><dd id="historyZone">-</dd>
+            <dt>ชื่อ</dt><dd id="historyName">-</dd>
+            <dt>วันที่</dt><dd id="historyDate">-</dd>
+            <dt>เวลา</dt><dd id="historyTime">-</dd>
+            <dt>ทะเบียนรถ</dt><dd id="historyVehicle">-</dd>
+            <dt>ประเภท</dt><dd id="historyType">-</dd>
+          </dl>
+        </div>
+        <div class="qr" id="historyQr"></div>
+        <div class="pass-sign">
+          <span>ผู้อนุมัติ</span><span>เจ้าหน้าที่ตรวจออก</span>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
