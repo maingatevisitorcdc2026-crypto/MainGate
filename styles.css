@@ -1336,18 +1336,7 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
   .settings-grid { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 640px) {
-  .shell { padding: 16px; }
-  .topbar, .verdict-content { align-items: stretch; flex-direction: column; }
-  .top-actions, .form-actions, .camera-actions { display: grid; grid-template-columns: 1fr; }
-  .form-grid, .metrics, .scan-input, .design-grid, .settings-form, .zone-list.detailed, .zone-editor, .user-editor, .dashboard-filters { grid-template-columns: 1fr; }
-  .global-search { width: 100%; }
-  .nav { grid-template-columns: 1fr 1fr; }
-  .face-slot.large { width: 100%; max-width: 180px; }
-  .flow-steps { grid-template-columns: 1fr 1fr; }
-  .registration-flow .camera-box { min-height: 300px; }
-}
-
+/* ─── Mobile: tablet/phone (≤760px) ─────────────────────────────── */
 @media (max-width: 760px) {
   body {
     display: block;
@@ -1365,22 +1354,15 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
     box-shadow: 0 8px 22px rgba(16, 24, 32, .16);
   }
 
-  .brand {
-    gap: 10px;
-  }
+  .brand { gap: 10px; }
 
   .brand img {
     width: 44px;
     height: 34px;
   }
 
-  .brand strong {
-    font-size: 16px;
-  }
-
-  .brand small {
-    font-size: 12px;
-  }
+  .brand strong { font-size: 16px; }
+  .brand small  { font-size: 12px; }
 
   .operator {
     margin-top: 10px;
@@ -1390,15 +1372,14 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
     align-items: center;
   }
 
-  .operator > div {
-    min-width: 0;
-  }
+  .operator > div { min-width: 0; }
 
   .logout-btn {
     min-height: 34px;
     padding: 0 12px;
   }
 
+  /* Bottom nav bar */
   .nav {
     position: fixed;
     left: 0;
@@ -1411,6 +1392,8 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
     padding: 9px 10px max(9px, env(safe-area-inset-bottom));
     background: rgba(16, 24, 32, .97);
     border-top: 1px solid rgba(255,255,255,.12);
+    /* reset grid set by 1100px breakpoint */
+    grid-template-columns: none;
   }
 
   .nav-item {
@@ -1423,21 +1406,13 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
   }
 
   .nav-item:hover,
-  .nav-item.active {
-    transform: none;
-  }
+  .nav-item.active { transform: none; }
 
-  .shell {
-    padding: 14px;
-  }
+  .shell { padding: 14px; }
 
-  .topbar {
-    display: none;
-  }
+  .topbar { display: none; }
 
-  .view.active {
-    animation: viewIn .2s var(--ease);
-  }
+  .view.active { animation: viewIn .2s var(--ease); }
 
   .panel,
   .verdict {
@@ -1448,9 +1423,7 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
 
   .panel:hover,
   .verdict:hover,
-  .metrics article:hover {
-    transform: none;
-  }
+  .metrics article:hover { transform: none; }
 
   .checkpoint-grid {
     display: grid;
@@ -1469,9 +1442,7 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
     border-radius: 8px;
   }
 
-  .scanner-box video {
-    min-height: 230px;
-  }
+  .scanner-box video { min-height: 230px; }
 
   .scan-input,
   .verdict-actions {
@@ -1480,13 +1451,25 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
     gap: 10px;
   }
 
+  /* ⚠️  ขยายเฉพาะปุ่มใน scan/verdict — ไม่แตะ .primary/.ghost ทั่วไป
+         เพื่อไม่ให้ปุ่มใน nav, panel-head, form-actions พังด้วย */
   .scan-input input,
   .scan-input button,
-  .verdict-actions button,
-  .primary,
-  .ghost,
-  .success,
-  .danger-btn {
+  .verdict-actions button {
+    min-height: 50px;
+    font-size: 16px;
+  }
+
+  /* ปุ่ม primary/ghost ใน view หลัก (register, inside ฯลฯ) ก็ขยายได้
+     แต่ยกเว้น .panel-head และ .nav-item */
+  .view .form-actions .primary,
+  .view .form-actions .ghost,
+  .view .form-actions .success,
+  .view .form-actions .danger-btn,
+  .view .camera-actions .primary,
+  .view .camera-actions .ghost,
+  .view .sticky-actions .primary,
+  .view .sticky-actions .ghost {
     min-height: 50px;
     font-size: 16px;
   }
@@ -1515,13 +1498,9 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
     line-height: 1.2;
   }
 
-  #scanMeta {
-    font-size: 14px;
-  }
+  #scanMeta { font-size: 14px; }
 
-  .chips {
-    gap: 6px;
-  }
+  .chips { gap: 6px; }
 
   .chips span {
     min-height: 30px;
@@ -1533,13 +1512,9 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
     gap: 10px;
   }
 
-  .metrics article {
-    padding: 12px;
-  }
+  .metrics article { padding: 12px; }
 
-  .metrics strong {
-    font-size: 28px;
-  }
+  .metrics strong { font-size: 28px; }
 
   .dashboard-filters,
   .form-grid,
@@ -1550,7 +1525,18 @@ dd { margin: 0; font-weight: 700; min-width: 0; word-break: break-word; }
     grid-template-columns: 1fr;
   }
 
-  table {
-    min-width: 560px;
-  }
+  table { min-width: 560px; }
+}
+
+/* ─── Mobile: small phone only (≤640px) ─────────────────────────── */
+@media (max-width: 640px) {
+  .shell { padding: 16px; }
+  .topbar, .verdict-content { align-items: stretch; flex-direction: column; }
+  .top-actions, .form-actions, .camera-actions { display: grid; grid-template-columns: 1fr; }
+  .form-grid, .metrics, .scan-input, .design-grid, .settings-form, .zone-list.detailed, .zone-editor, .user-editor, .dashboard-filters { grid-template-columns: 1fr; }
+  .global-search { width: 100%; }
+  /* nav ยังคง fixed flex bar ตาม 760px — ไม่ reset กลับเป็น grid */
+  .face-slot.large { width: 100%; max-width: 180px; }
+  .flow-steps { grid-template-columns: 1fr 1fr; }
+  .registration-flow .camera-box { min-height: 300px; }
 }
