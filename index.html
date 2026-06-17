@@ -325,10 +325,13 @@
           <div class="scan-input">
             <input id="scanCode" placeholder="เช่น GP-2026-05-0001">
             <button class="ghost" id="startScanner">เปิดกล้องสแกน</button>
-            <button class="primary" id="lookupPass">ตรวจสอบ</button>
           </div>
         </section>
-        <section class="verdict" id="verdict">
+        <dialog class="verdict verdict-modal is-hidden" id="verdict">
+          <div class="verdict-head">
+            <strong>ผลการอ่าน QR Code</strong>
+            <button class="ghost" id="closeVerdict" type="button">ปิด</button>
+          </div>
           <div class="verdict-status pending">รอตรวจสอบ</div>
           <div class="verdict-content">
             <div class="face-slot large"><img id="scanPhoto" alt=""></div>
@@ -343,7 +346,7 @@
             <button class="ghost" id="checkOutBtn">เช็คเอาท์</button>
             <button class="danger-btn" id="denyBtn">ปฏิเสธ</button>
           </div>
-        </section>
+        </dialog>
       </div>
     </section>
 

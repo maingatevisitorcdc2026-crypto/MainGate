@@ -102,6 +102,7 @@ let dashboardShowAll = false;
 let pendingRegistration = null;
 let completingAfterPrint = false;
 let currentSession = loadSession();
+let lastScannedQr = "";
 const DASHBOARD_ROW_LIMIT = 10;
 const USER_ROW_LIMIT = 10;
 
@@ -443,8 +444,9 @@ function openPassFromUrl() {
   const passNo = params.get("pass") || params.get("t");
   if (!passNo) return;
   document.querySelector("#scanCode").value = passNo;
-  switchView("checkpoint");
-  lookupPass();
+  switchView("checkpoint", { keepScan: true });
+  const pass = lookupPass();
+  if (!pass) alert("QR Code ไม่ถูกต้อง หรือไม่พบใบผ่านในระบบ");
 }
 
 function fillZones() {
@@ -474,12 +476,17 @@ function fillZones() {
   ).join("") || `<div class="zone-empty">ยังไม่มีโซนพื้นที่ กรอกรหัสและชื่อโซนเพื่อเพิ่มใหม่</div>`;
 }
 
-function switchView(id) {
+function switchView(id, options = {}) {
   if (currentSession && !allowedViews().includes(id)) id = allowedViews()[0] || "dashboard";
   document.querySelectorAll(".nav-item").forEach(btn => btn.classList.toggle("active", btn.dataset.view === id));
   document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === id));
   document.querySelector("#viewTitle").textContent = titles[id][0];
   document.querySelector("#viewSubtitle").textContent = titles[id][1];
+  if (id === "checkpoint") {
+    selectedPass = null;
+    if (!options.keepScan) document.querySelector("#scanCode").value = "";
+    showVerdict(false);
+  }
   render();
 }
 
@@ -801,7 +808,7 @@ function openPassFromSearch(passNo) {
   const results = document.querySelector("#searchResults");
   if (input) input.value = "";
   if (results) results.classList.remove("open");
-  switchView("checkpoint");
+  switchView("checkpoint", { keepScan: true });
   lookupPass();
 }
 
@@ -1153,6 +1160,19 @@ function updateDesignFromControls(save = false) {
   if (save) saveDesignState();
 }
 
+function showVerdict(visible) {
+  const dialog = document.querySelector("#verdict");
+  if (!dialog) return;
+  dialog.classList.toggle("is-hidden", !visible);
+  if (visible) {
+    if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    return;
+  }
+  if (dialog.open && typeof dialog.close === "function") dialog.close();
+  else dialog.removeAttribute("open");
+}
+
 function lookupPass() {
   const pass = passByCode(document.querySelector("#scanCode").value);
   selectedPass = pass || null;
@@ -1169,8 +1189,10 @@ function lookupPass() {
     meta.textContent = "ตรวจสอบเลขใบผ่านหรือ QR token อีกครั้ง";
     photo.removeAttribute("src");
     chips.innerHTML = "";
-    return;
+    showVerdict(false);
+    return null;
   }
+  showVerdict(true);
   const visitor = visitorById(pass.visitorId);
   const zone = document.querySelector("#scanZone").value;
   const zoneInfo = getZones().find(z => z.id === zone);
@@ -1209,6 +1231,8 @@ function lookupPass() {
     status.textContent = "อนุญาตเข้าโซน";
     status.classList.add("allow");
   }
+  document.querySelector("#scanCode").value = pass.passNo;
+  return pass;
 }
 
 function addLog(action) {
@@ -1557,7 +1581,28 @@ function deleteZone(id) {
   resetZoneForm();
 }
 
+function handleScannedQr(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value || value === lastScannedQr) return;
+  lastScannedQr = value;
+  document.querySelector("#scanCode").value = value;
+  const pass = lookupPass();
+  if (!pass) {
+    alert("QR Code ไม่ถูกต้อง หรือไม่พบใบผ่านในระบบ");
+    setTimeout(() => {
+      if (lastScannedQr === value) lastScannedQr = "";
+    }, 1600);
+    return;
+  }
+  stopScanner();
+  const actionBtn = hasPermission("check_in")
+    ? document.querySelector("#checkInBtn")
+    : document.querySelector("#checkOutBtn");
+  actionBtn?.focus();
+}
+
 async function startScanner() {
+  lastScannedQr = "";
   scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
   const video = document.querySelector("#scanVideo");
   video.srcObject = scannerStream;
@@ -1574,8 +1619,7 @@ async function startScanner() {
     try {
       const codes = await detector.detect(video);
       if (codes.length) {
-        document.querySelector("#scanCode").value = codes[0].rawValue;
-        lookupPass();
+        handleScannedQr(codes[0].rawValue);
       }
     } catch {}
     requestAnimationFrame(tick);
@@ -1732,11 +1776,15 @@ function bindEvents() {
     reader.readAsDataURL(file);
   });
   document.querySelector("#documentType").addEventListener("change", updateDocumentTypeUi);
-  document.querySelector("#lookupPass").addEventListener("click", lookupPass);
-  document.querySelector("#scanCode").addEventListener("keydown", e => { if (e.key === "Enter") lookupPass(); });
+  document.querySelector("#scanCode").addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    const pass = lookupPass();
+    if (!pass) alert("ไม่พบใบผ่าน กรุณาตรวจสอบเลขใบผ่านหรือ QR อีกครั้ง");
+  });
   document.querySelector("#checkInBtn").addEventListener("click", () => addLog("check_in"));
   document.querySelector("#checkOutBtn").addEventListener("click", () => addLog("check_out"));
   document.querySelector("#denyBtn").addEventListener("click", () => addLog("deny"));
+  document.querySelector("#closeVerdict").addEventListener("click", () => showVerdict(false));
   document.querySelector("#startScanner").addEventListener("click", () => startScanner().catch(err => alert(err.message)));
   document.querySelector("#insideSearch").addEventListener("input", renderInside);
   document.querySelector("#banSearch").addEventListener("input", renderBans);
