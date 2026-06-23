@@ -108,6 +108,15 @@ function normalizeUserStatus(status) {
   return value || "pending";
 }
 
+function findSessionUser() {
+  if (!currentSession) return null;
+  return (state.users || []).find(user => {
+    const sameId = user.userId && currentSession.userId && String(user.userId) === String(currentSession.userId);
+    const sameUsername = String(user.username || "").trim().toLowerCase() === String(currentSession.username || "").trim().toLowerCase();
+    return (sameId || sameUsername) && normalizeUserStatus(user.status) === "active";
+  }) || null;
+}
+
 let state = loadState();
 let photoData = "";
 let cameraStream = null;
@@ -178,7 +187,7 @@ function syncUsers() {
 
 function markUserPresence(status, loggedInAt = "") {
   if (!currentSession) return;
-  const user = (state.users || []).find(item => item.userId === currentSession.userId);
+  const user = findSessionUser() || (state.users || []).find(item => item.userId === currentSession.userId || String(item.username || "").toLowerCase() === String(currentSession.username || "").toLowerCase());
   if (!user) return;
   const now = nowIso();
   user.onlineStatus = status;
@@ -630,11 +639,11 @@ function renderBans() {
 
 function activeUser() {
   if (currentSession) {
-    const sessionUser = (state.users || []).find(user => user.userId === currentSession.userId && user.status === "active");
+    const sessionUser = findSessionUser();
     if (sessionUser) return { ...sessionUser, role: normalizeRole(sessionUser.role, sessionUser), displayName: currentSession.displayName || sessionUser.displayName };
     return { ...currentSession, role: normalizeRole(currentSession.role, currentSession), status: "active" };
   }
-  const fallbackUser = (state.users || []).find(user => user.status === "active") || defaultAdminUser;
+  const fallbackUser = (state.users || []).find(user => normalizeUserStatus(user.status) === "active") || defaultAdminUser;
   return { ...fallbackUser, role: normalizeRole(fallbackUser.role, fallbackUser) };
 }
 
@@ -669,7 +678,7 @@ function applyRoleAccess() {
 
 function renderLoginState() {
   const screen = document.querySelector("#loginScreen");
-  if (currentSession && (sessionExpired() || !(state.users || []).some(user => user.userId === currentSession.userId && user.status === "active"))) {
+  if (currentSession && (sessionExpired() || !findSessionUser())) {
     clearSession();
   }
   const loggedIn = Boolean(currentSession);
@@ -775,13 +784,13 @@ function renderUsers() {
   const body = document.querySelector("#userRows");
   if (!body) return;
   state.users = state.users?.length ? state.users : [defaultAdminUser];
-  renderLoginState();
   state.users = state.users.map(user => ({
     ...user,
     role: normalizeRole(user.role, user),
     status: normalizeUserStatus(user.status),
     passcode: String(user.passcode || "")
   }));
+  renderLoginState();
   const rows = state.users.slice(0, USER_ROW_LIMIT);
   const counter = document.querySelector("#userRowsLimit");
   if (counter) counter.textContent = `แสดง ${rows.length}/${state.users.length}`;
@@ -1525,7 +1534,10 @@ async function saveUser(event) {
 }
 
 function editUser(userId) {
-  if (!hasPermission("manage_users")) return;
+  if (!hasPermission("manage_users")) {
+    alert("เฉพาะ Admin เท่านั้นที่อนุมัติหรือแก้ไขผู้ใช้งานได้");
+    return;
+  }
   const user = (state.users || []).find(item => item.userId === userId);
   if (!user) return;
   document.querySelector("#userEditId").value = user.userId;
