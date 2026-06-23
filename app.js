@@ -91,6 +91,23 @@ const titles = {
   settings: ["ตั้งค่า", "โซน สิทธิ์ และกฎความปลอดภัยของระบบ"]
 };
 
+function normalizeRole(role, user = {}) {
+  const value = String(role || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+  if (value === "admin" || user.userId === "U-ADMIN" || String(user.username || "").toLowerCase() === "admin") return "Admin";
+  if (value === "security-guard" || value === "guard" || value === "security") return "Security-Guard";
+  if (value === "security-maingate" || value === "maingate" || value === "main-gate" || value === "security-main-gate") return "Security-Maingate";
+  const trimmed = String(role || "").trim();
+  return value ? (rolePermissions[trimmed] ? trimmed : "Security-Guard") : "Security-Guard";
+}
+
+function normalizeUserStatus(status) {
+  const value = String(status || "").trim().toLowerCase();
+  if (value === "active" || value === "ใช้งาน") return "active";
+  if (value === "pending" || value === "รออนุมัติ") return "pending";
+  if (value === "inactive" || value === "disabled" || value === "ปิดใช้งาน") return "inactive";
+  return value || "pending";
+}
+
 let state = loadState();
 let photoData = "";
 let cameraStream = null;
@@ -134,11 +151,12 @@ function loadSession() {
 
 function saveSession(user) {
   const loggedInAt = nowIso();
+  const role = normalizeRole(user.role, user);
   currentSession = {
     userId: user.userId,
     username: user.username,
     displayName: user.displayName,
-    role: user.role,
+    role,
     loggedInAt
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(currentSession));
@@ -244,9 +262,9 @@ async function loadRemoteData() {
       userId: user.userId || existing?.userId || `U-${Date.now()}`,
       username,
       displayName: user.displayName || user.name || user.username || existing?.displayName || "",
-      passcode: user.passcode || existing?.passcode || "",
-      role: user.role || existing?.role || "Security-Guard",
-      status: user.status || existing?.status || "active",
+      passcode: String(user.passcode || existing?.passcode || ""),
+      role: normalizeRole(user.role || existing?.role || "Security-Guard", user),
+      status: normalizeUserStatus(user.status || existing?.status || "active"),
       createdAt: user.createdAt || existing?.createdAt || nowIso(),
       updatedAt: user.updatedAt || existing?.updatedAt || "",
       onlineStatus: user.onlineStatus || existing?.onlineStatus || "offline",
@@ -613,19 +631,20 @@ function renderBans() {
 function activeUser() {
   if (currentSession) {
     const sessionUser = (state.users || []).find(user => user.userId === currentSession.userId && user.status === "active");
-    if (sessionUser) return { ...sessionUser, displayName: currentSession.displayName || sessionUser.displayName };
-    return { ...currentSession, status: "active" };
+    if (sessionUser) return { ...sessionUser, role: normalizeRole(sessionUser.role, sessionUser), displayName: currentSession.displayName || sessionUser.displayName };
+    return { ...currentSession, role: normalizeRole(currentSession.role, currentSession), status: "active" };
   }
-  return (state.users || []).find(user => user.status === "active") || defaultAdminUser;
+  const fallbackUser = (state.users || []).find(user => user.status === "active") || defaultAdminUser;
+  return { ...fallbackUser, role: normalizeRole(fallbackUser.role, fallbackUser) };
 }
 
 function hasPermission(action) {
-  const role = activeUser().role || "Admin";
+  const role = normalizeRole(activeUser().role, activeUser());
   return Boolean(rolePermissions[role]?.actions.includes(action));
 }
 
 function allowedViews() {
-  const role = activeUser().role || "Admin";
+  const role = normalizeRole(activeUser().role, activeUser());
   return rolePermissions[role]?.views || rolePermissions.Admin.views;
 }
 
@@ -667,11 +686,13 @@ function loginUser(event) {
   const username = document.querySelector("#loginUsername").value.trim().toLowerCase();
   const passcode = document.querySelector("#loginPasscode").value.trim();
   const error = document.querySelector("#loginError");
-  const user = (state.users || []).find(item => item.username.toLowerCase() === username && item.passcode === passcode);
+  const user = (state.users || []).find(item => String(item.username || "").trim().toLowerCase() === username && String(item.passcode || "").trim() === passcode);
   if (!user) {
     error.textContent = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง";
     return;
   }
+  user.role = normalizeRole(user.role, user);
+  user.status = normalizeUserStatus(user.status);
   if (user.status === "pending") {
     error.textContent = "บัญชีนี้ยังรอ Admin กำหนดสิทธิ์";
     return;
@@ -680,6 +701,8 @@ function loginUser(event) {
     error.textContent = "บัญชีนี้ถูกปิดใช้งาน";
     return;
   }
+  user.passcode = String(user.passcode || "");
+  saveState();
   error.textContent = "";
   saveSession(user);
   document.querySelector("#loginForm").reset();
@@ -702,9 +725,9 @@ async function signupUser(event) {
     userId: `U-${Date.now()}`,
     username,
     displayName,
-    passcode,
-    role: "Security-Guard",
-    status: "pending",
+    passcode: String(passcode),
+    role: normalizeRole("Security-Guard"),
+    status: normalizeUserStatus("pending"),
     createdAt: nowIso()
   });
   const result = await syncUsers();
@@ -753,6 +776,12 @@ function renderUsers() {
   if (!body) return;
   state.users = state.users?.length ? state.users : [defaultAdminUser];
   renderLoginState();
+  state.users = state.users.map(user => ({
+    ...user,
+    role: normalizeRole(user.role, user),
+    status: normalizeUserStatus(user.status),
+    passcode: String(user.passcode || "")
+  }));
   const rows = state.users.slice(0, USER_ROW_LIMIT);
   const counter = document.querySelector("#userRowsLimit");
   if (counter) counter.textContent = `แสดง ${rows.length}/${state.users.length}`;
@@ -1461,8 +1490,8 @@ async function saveUser(event) {
   const username = document.querySelector("#userName").value.trim().toLowerCase();
   const displayName = document.querySelector("#userDisplayName").value.trim();
   const passcode = document.querySelector("#userPasscode").value.trim();
-  const role = document.querySelector("#userRole").value;
-  const status = document.querySelector("#userStatus").value;
+  const role = normalizeRole(document.querySelector("#userRole").value);
+  const status = normalizeUserStatus(document.querySelector("#userStatus").value);
   if (!username || !displayName) return;
   state.users = state.users?.length ? state.users : [defaultAdminUser];
   if (state.users.some(user => user.username.toLowerCase() === username && user.userId !== editId)) {
@@ -1474,7 +1503,7 @@ async function saveUser(event) {
     if (!user) return;
     user.username = username;
     user.displayName = displayName;
-    if (passcode) user.passcode = passcode;
+    if (passcode) user.passcode = String(passcode);
     user.role = role;
     user.status = user.userId === "U-ADMIN" ? "active" : status;
     user.updatedAt = nowIso();
@@ -1483,7 +1512,7 @@ async function saveUser(event) {
       userId: `U-${Date.now()}`,
       username,
       displayName,
-      passcode: passcode || "1234",
+      passcode: String(passcode || "1234"),
       role,
       status,
       createdAt: nowIso()
