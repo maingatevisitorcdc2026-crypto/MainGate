@@ -99,6 +99,7 @@ let selectedPass = null;
 let passDesign = loadDesign();
 let appSettings = loadSettings();
 let dashboardShowAll = false;
+let dashboardPage = 1;
 let pendingRegistration = null;
 let completingAfterPrint = false;
 let currentSession = loadSession();
@@ -152,8 +153,8 @@ function clearSession() {
 
 function syncUsers() {
   saveState();
-  apiPost("saveUsers", {
-    users: state.users.map(user => ({ ...user, passcode: user.passcode ? "SET" : "" }))
+  return apiPost("saveUsers", {
+    users: state.users
   });
 }
 
@@ -243,7 +244,7 @@ async function loadRemoteData() {
       userId: user.userId || existing?.userId || `U-${Date.now()}`,
       username,
       displayName: user.displayName || user.name || user.username || existing?.displayName || "",
-      passcode: user.passcode && user.passcode !== "SET" ? user.passcode : (existing?.passcode || ""),
+      passcode: user.passcode || existing?.passcode || "",
       role: user.role || existing?.role || "Security-Guard",
       status: user.status || existing?.status || "active",
       createdAt: user.createdAt || existing?.createdAt || nowIso(),
@@ -520,10 +521,20 @@ function renderDashboard() {
     const zoneOk = !zoneFilter || pass.allowedZones?.includes(zoneFilter) || log?.zoneId === zoneFilter;
     return text.includes(q) && statusOk && zoneOk;
   });
-  const latest = filtered.slice(-DASHBOARD_ROW_LIMIT).reverse();
+  const rows = filtered.slice().reverse();
+  const totalPages = Math.max(1, Math.ceil(rows.length / DASHBOARD_ROW_LIMIT));
+  dashboardPage = Math.min(Math.max(1, dashboardPage), totalPages);
+  const start = (dashboardPage - 1) * DASHBOARD_ROW_LIMIT;
+  const latest = rows.slice(start, start + DASHBOARD_ROW_LIMIT);
   const dashboardLimit = document.querySelector("#toggleDashboardRows");
-  dashboardLimit.textContent = `ล่าสุด ${latest.length}/${filtered.length}`;
+  dashboardLimit.textContent = `รายการ ${filtered.length}`;
   dashboardLimit.disabled = true;
+  const pageInfo = document.querySelector("#dashboardPageInfo");
+  const prevBtn = document.querySelector("#dashboardPrev");
+  const nextBtn = document.querySelector("#dashboardNext");
+  if (pageInfo) pageInfo.textContent = `หน้า ${dashboardPage}/${totalPages}`;
+  if (prevBtn) prevBtn.disabled = dashboardPage <= 1;
+  if (nextBtn) nextBtn.disabled = dashboardPage >= totalPages;
   document.querySelector("#latestRows").innerHTML = latest.map(pass => {
     const visitor = visitorForPass(pass);
     const activity = activityForPass(pass);
@@ -676,7 +687,7 @@ function loginUser(event) {
   renderUsers();
 }
 
-function signupUser(event) {
+async function signupUser(event) {
   event.preventDefault();
   const displayName = document.querySelector("#signupDisplayName").value.trim();
   const username = document.querySelector("#signupUsername").value.trim().toLowerCase();
@@ -696,9 +707,11 @@ function signupUser(event) {
     status: "pending",
     createdAt: nowIso()
   });
-  syncUsers();
+  const result = await syncUsers();
   document.querySelector("#signupForm").reset();
-  message.textContent = "ส่งคำขอแล้ว กรุณารอ Admin กำหนดสิทธิ์";
+  message.textContent = result.ok
+    ? "ส่งคำขอแล้ว กรุณารอ Admin กำหนดสิทธิ์"
+    : "บันทึกในเครื่องแล้ว แต่ส่งไป Google Sheet ไม่ได้ กรุณาตรวจ Apps Script";
   renderUsers();
 }
 
@@ -1438,7 +1451,7 @@ function unbanVisitor(banId) {
   renderBans();
 }
 
-function saveUser(event) {
+async function saveUser(event) {
   event.preventDefault();
   if (!hasPermission("manage_users")) {
     alert("เฉพาะ Admin เท่านั้นที่จัดการผู้ใช้งานได้");
@@ -1476,10 +1489,7 @@ function saveUser(event) {
       createdAt: nowIso()
     });
   }
-  saveState();
-  apiPost("saveUsers", {
-    users: state.users.map(user => ({ ...user, passcode: user.passcode ? "SET" : "" }))
-  });
+  await syncUsers();
   resetUserForm();
   renderUsers();
   closeUserDialog();
@@ -1728,9 +1738,23 @@ function bindEvents() {
     dashboardShowAll = !dashboardShowAll;
     renderDashboard();
   });
+  document.querySelector("#dashboardPrev").addEventListener("click", () => {
+    dashboardPage = Math.max(1, dashboardPage - 1);
+    renderDashboard();
+  });
+  document.querySelector("#dashboardNext").addEventListener("click", () => {
+    dashboardPage += 1;
+    renderDashboard();
+  });
   ["dashboardFilterText", "dashboardFilterStatus", "dashboardFilterZone"].forEach(id => {
-    document.querySelector(`#${id}`).addEventListener("input", renderDashboard);
-    document.querySelector(`#${id}`).addEventListener("change", renderDashboard);
+    document.querySelector(`#${id}`).addEventListener("input", () => {
+      dashboardPage = 1;
+      renderDashboard();
+    });
+    document.querySelector(`#${id}`).addEventListener("change", () => {
+      dashboardPage = 1;
+      renderDashboard();
+    });
   });
   document.querySelector("#latestRows").addEventListener("click", event => {
     const btn = event.target.closest("[data-view-pass]");
