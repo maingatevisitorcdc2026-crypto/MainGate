@@ -91,6 +91,32 @@ const titles = {
   settings: ["ตั้งค่า", "โซน สิทธิ์ และกฎความปลอดภัยของระบบ"]
 };
 
+function normalizeRole(role, user = {}) {
+  const value = String(role || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+  if (value === "admin" || user.userId === "U-ADMIN" || String(user.username || "").toLowerCase() === "admin") return "Admin";
+  if (value === "security-guard" || value === "guard" || value === "security") return "Security-Guard";
+  if (value === "security-maingate" || value === "maingate" || value === "main-gate" || value === "security-main-gate") return "Security-Maingate";
+  const trimmed = String(role || "").trim();
+  return value ? (rolePermissions[trimmed] ? trimmed : "Security-Guard") : "Security-Guard";
+}
+
+function normalizeUserStatus(status) {
+  const value = String(status || "").trim().toLowerCase();
+  if (value === "active" || value === "ใช้งาน") return "active";
+  if (value === "pending" || value === "รออนุมัติ") return "pending";
+  if (value === "inactive" || value === "disabled" || value === "ปิดใช้งาน") return "inactive";
+  return value || "pending";
+}
+
+function findSessionUser() {
+  if (!currentSession) return null;
+  return (state.users || []).find(user => {
+    const sameId = user.userId && currentSession.userId && String(user.userId) === String(currentSession.userId);
+    const sameUsername = String(user.username || "").trim().toLowerCase() === String(currentSession.username || "").trim().toLowerCase();
+    return (sameId || sameUsername) && normalizeUserStatus(user.status) === "active";
+  }) || null;
+}
+
 let state = loadState();
 let photoData = "";
 let cameraStream = null;
@@ -99,6 +125,7 @@ let selectedPass = null;
 let passDesign = loadDesign();
 let appSettings = loadSettings();
 let dashboardShowAll = false;
+let dashboardPage = 1;
 let pendingRegistration = null;
 let completingAfterPrint = false;
 let currentSession = loadSession();
@@ -108,15 +135,7 @@ const USER_ROW_LIMIT = 10;
 
 function loadState() {
   const fallback = { visitors: [], passes: [], logs: [], users: [defaultAdminUser], bans: [], zones: defaultZones };
-  try {
-    const loaded = JSON.parse(localStorage.getItem(SHEET_KEY)) || fallback;
-    const users = loaded.users?.length ? loaded.users : [defaultAdminUser];
-    const hasOnlyLegacyZones = loaded.zones?.length && loaded.zones.every(zone => legacyDefaultZoneIds.has(zone.id));
-    const zones = hasOnlyLegacyZones ? defaultZones : (loaded.zones?.length ? loaded.zones : defaultZones);
-    return { ...fallback, ...loaded, users, zones };
-  } catch {
-    return fallback;
-  }
+  return fallback;
 }
 
 function saveState() {
@@ -133,11 +152,12 @@ function loadSession() {
 
 function saveSession(user) {
   const loggedInAt = nowIso();
+  const role = normalizeRole(user.role, user);
   currentSession = {
     userId: user.userId,
     username: user.username,
     displayName: user.displayName,
-    role: user.role,
+    role,
     loggedInAt
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(currentSession));
@@ -152,14 +172,14 @@ function clearSession() {
 
 function syncUsers() {
   saveState();
-  apiPost("saveUsers", {
-    users: state.users.map(user => ({ ...user, passcode: user.passcode ? "SET" : "" }))
+  return apiPost("saveUsers", {
+    users: state.users
   });
 }
 
 function markUserPresence(status, loggedInAt = "") {
   if (!currentSession) return;
-  const user = (state.users || []).find(item => item.userId === currentSession.userId);
+  const user = findSessionUser() || (state.users || []).find(item => item.userId === currentSession.userId || String(item.username || "").toLowerCase() === String(currentSession.username || "").toLowerCase());
   if (!user) return;
   const now = nowIso();
   user.onlineStatus = status;
@@ -192,7 +212,7 @@ function normalizeZoneId(value) {
 }
 
 async function apiPost(action, payload = {}) {
-  const apiUrl = (appSettings.appsScriptUrl || API_URL || "").trim();
+  const apiUrl = API_URL.trim();
   if (!apiUrl) return { ok: false, offline: true };
   try {
     const response = await fetch(apiUrl, {
@@ -226,7 +246,7 @@ function parseRemotePass(pass) {
 
 async function loadRemoteData() {
   const data = await apiPost("getAll");
-  if (!data.ok) return;
+  if (!data.ok) return false;
   state.zones = parseRemoteZones(data.zones).length ? parseRemoteZones(data.zones) : getZones();
   state.visitors = (data.visitors || []).map(visitor => ({
     ...visitor,
@@ -243,9 +263,9 @@ async function loadRemoteData() {
       userId: user.userId || existing?.userId || `U-${Date.now()}`,
       username,
       displayName: user.displayName || user.name || user.username || existing?.displayName || "",
-      passcode: user.passcode && user.passcode !== "SET" ? user.passcode : (existing?.passcode || ""),
-      role: user.role || existing?.role || "Security-Guard",
-      status: user.status || existing?.status || "active",
+      passcode: String(user.passcode || existing?.passcode || ""),
+      role: normalizeRole(user.role || existing?.role || "Security-Guard", user),
+      status: normalizeUserStatus(user.status || existing?.status || "active"),
       createdAt: user.createdAt || existing?.createdAt || nowIso(),
       updatedAt: user.updatedAt || existing?.updatedAt || "",
       onlineStatus: user.onlineStatus || existing?.onlineStatus || "offline",
@@ -258,6 +278,7 @@ async function loadRemoteData() {
   fillZones();
   render();
   openPassFromUrl();
+  return true;
 }
 
 function loadDesign() {
@@ -276,6 +297,7 @@ function loadSettings() {
   try {
     const loaded = { ...defaultSettings, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}) };
     if (loaded.passPrefix === "GP-{YYYY}-05-") loaded.passPrefix = defaultSettings.passPrefix;
+    loaded.appsScriptUrl = API_URL;
     return loaded;
   } catch {
     return { ...defaultSettings };
@@ -520,10 +542,20 @@ function renderDashboard() {
     const zoneOk = !zoneFilter || pass.allowedZones?.includes(zoneFilter) || log?.zoneId === zoneFilter;
     return text.includes(q) && statusOk && zoneOk;
   });
-  const latest = filtered.slice(-DASHBOARD_ROW_LIMIT).reverse();
+  const rows = filtered.slice().reverse();
+  const totalPages = Math.max(1, Math.ceil(rows.length / DASHBOARD_ROW_LIMIT));
+  dashboardPage = Math.min(Math.max(1, dashboardPage), totalPages);
+  const start = (dashboardPage - 1) * DASHBOARD_ROW_LIMIT;
+  const latest = rows.slice(start, start + DASHBOARD_ROW_LIMIT);
   const dashboardLimit = document.querySelector("#toggleDashboardRows");
-  dashboardLimit.textContent = `ล่าสุด ${latest.length}/${filtered.length}`;
+  dashboardLimit.textContent = `รายการ ${filtered.length}`;
   dashboardLimit.disabled = true;
+  const pageInfo = document.querySelector("#dashboardPageInfo");
+  const prevBtn = document.querySelector("#dashboardPrev");
+  const nextBtn = document.querySelector("#dashboardNext");
+  if (pageInfo) pageInfo.textContent = `หน้า ${dashboardPage}/${totalPages}`;
+  if (prevBtn) prevBtn.disabled = dashboardPage <= 1;
+  if (nextBtn) nextBtn.disabled = dashboardPage >= totalPages;
   document.querySelector("#latestRows").innerHTML = latest.map(pass => {
     const visitor = visitorForPass(pass);
     const activity = activityForPass(pass);
@@ -601,20 +633,21 @@ function renderBans() {
 
 function activeUser() {
   if (currentSession) {
-    const sessionUser = (state.users || []).find(user => user.userId === currentSession.userId && user.status === "active");
-    if (sessionUser) return { ...sessionUser, displayName: currentSession.displayName || sessionUser.displayName };
-    return { ...currentSession, status: "active" };
+    const sessionUser = findSessionUser();
+    if (sessionUser) return { ...sessionUser, role: normalizeRole(sessionUser.role, sessionUser), displayName: currentSession.displayName || sessionUser.displayName };
+    return { ...currentSession, role: normalizeRole(currentSession.role, currentSession), status: "active" };
   }
-  return (state.users || []).find(user => user.status === "active") || defaultAdminUser;
+  const fallbackUser = (state.users || []).find(user => normalizeUserStatus(user.status) === "active") || defaultAdminUser;
+  return { ...fallbackUser, role: normalizeRole(fallbackUser.role, fallbackUser) };
 }
 
 function hasPermission(action) {
-  const role = activeUser().role || "Admin";
+  const role = normalizeRole(activeUser().role, activeUser());
   return Boolean(rolePermissions[role]?.actions.includes(action));
 }
 
 function allowedViews() {
-  const role = activeUser().role || "Admin";
+  const role = normalizeRole(activeUser().role, activeUser());
   return rolePermissions[role]?.views || rolePermissions.Admin.views;
 }
 
@@ -639,7 +672,7 @@ function applyRoleAccess() {
 
 function renderLoginState() {
   const screen = document.querySelector("#loginScreen");
-  if (currentSession && (sessionExpired() || !(state.users || []).some(user => user.userId === currentSession.userId && user.status === "active"))) {
+  if (currentSession && (sessionExpired() || !findSessionUser())) {
     clearSession();
   }
   const loggedIn = Boolean(currentSession);
@@ -656,11 +689,13 @@ function loginUser(event) {
   const username = document.querySelector("#loginUsername").value.trim().toLowerCase();
   const passcode = document.querySelector("#loginPasscode").value.trim();
   const error = document.querySelector("#loginError");
-  const user = (state.users || []).find(item => item.username.toLowerCase() === username && item.passcode === passcode);
+  const user = (state.users || []).find(item => String(item.username || "").trim().toLowerCase() === username && String(item.passcode || "").trim() === passcode);
   if (!user) {
     error.textContent = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง";
     return;
   }
+  user.role = normalizeRole(user.role, user);
+  user.status = normalizeUserStatus(user.status);
   if (user.status === "pending") {
     error.textContent = "บัญชีนี้ยังรอ Admin กำหนดสิทธิ์";
     return;
@@ -669,6 +704,8 @@ function loginUser(event) {
     error.textContent = "บัญชีนี้ถูกปิดใช้งาน";
     return;
   }
+  user.passcode = String(user.passcode || "");
+  saveState();
   error.textContent = "";
   saveSession(user);
   document.querySelector("#loginForm").reset();
@@ -676,7 +713,7 @@ function loginUser(event) {
   renderUsers();
 }
 
-function signupUser(event) {
+async function signupUser(event) {
   event.preventDefault();
   const displayName = document.querySelector("#signupDisplayName").value.trim();
   const username = document.querySelector("#signupUsername").value.trim().toLowerCase();
@@ -691,14 +728,16 @@ function signupUser(event) {
     userId: `U-${Date.now()}`,
     username,
     displayName,
-    passcode,
-    role: "Security-Guard",
-    status: "pending",
+    passcode: String(passcode),
+    role: normalizeRole("Security-Guard"),
+    status: normalizeUserStatus("pending"),
     createdAt: nowIso()
   });
-  syncUsers();
+  const result = await syncUsers();
   document.querySelector("#signupForm").reset();
-  message.textContent = "ส่งคำขอแล้ว กรุณารอ Admin กำหนดสิทธิ์";
+  message.textContent = result.ok
+    ? "ส่งคำขอแล้ว กรุณารอ Admin กำหนดสิทธิ์"
+    : "บันทึกในเครื่องแล้ว แต่ส่งไป Google Sheet ไม่ได้ กรุณาตรวจ Apps Script";
   renderUsers();
 }
 
@@ -739,6 +778,12 @@ function renderUsers() {
   const body = document.querySelector("#userRows");
   if (!body) return;
   state.users = state.users?.length ? state.users : [defaultAdminUser];
+  state.users = state.users.map(user => ({
+    ...user,
+    role: normalizeRole(user.role, user),
+    status: normalizeUserStatus(user.status),
+    passcode: String(user.passcode || "")
+  }));
   renderLoginState();
   const rows = state.users.slice(0, USER_ROW_LIMIT);
   const counter = document.querySelector("#userRowsLimit");
@@ -1343,7 +1388,7 @@ function updateSettingsFromControls(save = false) {
     alertRestricted: document.querySelector("#setAlertRestricted").checked,
     alertChannel: document.querySelector("#setAlertChannel").value,
     sheetUrl: document.querySelector("#setSheetUrl").value,
-    appsScriptUrl: document.querySelector("#setAppsScriptUrl").value,
+    appsScriptUrl: API_URL,
     exportFormat: document.querySelector("#setExportFormat").value,
     reportCycle: document.querySelector("#setReportCycle").value
   };
@@ -1438,7 +1483,7 @@ function unbanVisitor(banId) {
   renderBans();
 }
 
-function saveUser(event) {
+async function saveUser(event) {
   event.preventDefault();
   if (!hasPermission("manage_users")) {
     alert("เฉพาะ Admin เท่านั้นที่จัดการผู้ใช้งานได้");
@@ -1448,8 +1493,8 @@ function saveUser(event) {
   const username = document.querySelector("#userName").value.trim().toLowerCase();
   const displayName = document.querySelector("#userDisplayName").value.trim();
   const passcode = document.querySelector("#userPasscode").value.trim();
-  const role = document.querySelector("#userRole").value;
-  const status = document.querySelector("#userStatus").value;
+  const role = normalizeRole(document.querySelector("#userRole").value);
+  const status = normalizeUserStatus(document.querySelector("#userStatus").value);
   if (!username || !displayName) return;
   state.users = state.users?.length ? state.users : [defaultAdminUser];
   if (state.users.some(user => user.username.toLowerCase() === username && user.userId !== editId)) {
@@ -1461,7 +1506,7 @@ function saveUser(event) {
     if (!user) return;
     user.username = username;
     user.displayName = displayName;
-    if (passcode) user.passcode = passcode;
+    if (passcode) user.passcode = String(passcode);
     user.role = role;
     user.status = user.userId === "U-ADMIN" ? "active" : status;
     user.updatedAt = nowIso();
@@ -1470,23 +1515,23 @@ function saveUser(event) {
       userId: `U-${Date.now()}`,
       username,
       displayName,
-      passcode: passcode || "1234",
+      passcode: String(passcode || "1234"),
       role,
       status,
       createdAt: nowIso()
     });
   }
-  saveState();
-  apiPost("saveUsers", {
-    users: state.users.map(user => ({ ...user, passcode: user.passcode ? "SET" : "" }))
-  });
+  await syncUsers();
   resetUserForm();
   renderUsers();
   closeUserDialog();
 }
 
 function editUser(userId) {
-  if (!hasPermission("manage_users")) return;
+  if (!hasPermission("manage_users")) {
+    alert("เฉพาะ Admin เท่านั้นที่อนุมัติหรือแก้ไขผู้ใช้งานได้");
+    return;
+  }
   const user = (state.users || []).find(item => item.userId === userId);
   if (!user) return;
   document.querySelector("#userEditId").value = user.userId;
@@ -1728,9 +1773,23 @@ function bindEvents() {
     dashboardShowAll = !dashboardShowAll;
     renderDashboard();
   });
+  document.querySelector("#dashboardPrev").addEventListener("click", () => {
+    dashboardPage = Math.max(1, dashboardPage - 1);
+    renderDashboard();
+  });
+  document.querySelector("#dashboardNext").addEventListener("click", () => {
+    dashboardPage += 1;
+    renderDashboard();
+  });
   ["dashboardFilterText", "dashboardFilterStatus", "dashboardFilterZone"].forEach(id => {
-    document.querySelector(`#${id}`).addEventListener("input", renderDashboard);
-    document.querySelector(`#${id}`).addEventListener("change", renderDashboard);
+    document.querySelector(`#${id}`).addEventListener("input", () => {
+      dashboardPage = 1;
+      renderDashboard();
+    });
+    document.querySelector(`#${id}`).addEventListener("change", () => {
+      dashboardPage = 1;
+      renderDashboard();
+    });
   });
   document.querySelector("#latestRows").addEventListener("click", event => {
     const btn = event.target.closest("[data-view-pass]");
@@ -1891,7 +1950,7 @@ function bindEvents() {
   });
 }
 
-function init() {
+async function init() {
   fillZones();
   updateDocumentTypeUi();
   setDefaultExpiry();
@@ -1903,6 +1962,12 @@ function init() {
   document.querySelector("#pvPassNo").textContent = passNumber();
   document.querySelector("#qrBox").innerHTML = createQrImage(passCheckinUrl(passNumber()));
   document.querySelector(".designerQr").innerHTML = createQrImage(passCheckinUrl("GP-2026-05-0001"));
+  const loaded = await loadRemoteData();
+  if (!loaded) {
+    render();
+    openPassFromUrl();
+    alert("โหลดข้อมูลจาก Google Sheet ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตหรือ Apps Script");
+  }
   setInterval(() => {
     document.querySelector("#clock").textContent = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
     renderLoginState();
@@ -1911,9 +1976,6 @@ function init() {
     touchPresence();
     renderUsers();
   }, 60000);
-  render();
-  openPassFromUrl();
-  loadRemoteData();
 }
 
 init();
